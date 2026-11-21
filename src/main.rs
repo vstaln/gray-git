@@ -20,12 +20,16 @@ use std::sync::{Arc, Mutex, mpsc};
 
 use serde_json::{Value, json};
 
+#[allow(dead_code)]
 #[path = "mods/autocommit.rs"]
 mod autocommit;
+#[allow(dead_code)]
 #[path = "mods/checkpoint.rs"]
 mod checkpoint;
+#[allow(dead_code)]
 #[path = "mods/gitmerge.rs"]
 mod gitmerge;
+#[allow(dead_code)]
 #[path = "mods/review.rs"]
 mod review;
 
