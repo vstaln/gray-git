@@ -11,7 +11,6 @@
 //! tree, never when the tree is clean, and never on a turn where no tool
 //! ran — a dirty tree the agent didn't touch is left alone.
 
-use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
@@ -187,31 +186,6 @@ pub fn handle_autocommit(req: &Value, turn: &mut Turn) -> (Option<Value>, bool) 
         }
     };
     (Some(json!({ "id": id, "result": result })), false)
-}
-
-fn main_autocommit() -> std::io::Result<()> {
-    if std::env::args().nth(1).as_deref() == Some("manifest") {
-        println!("{}", manifest_autocommit());
-        return Ok(());
-    }
-    let stdin = std::io::stdin();
-    let mut stdout = std::io::stdout();
-    let mut turn = Turn::default();
-    for line in stdin.lock().lines() {
-        let line = line?;
-        let Ok(req) = serde_json::from_str::<Value>(&line) else {
-            continue;
-        };
-        let (reply, exit) = handle_autocommit(&req, &mut turn);
-        if let Some(reply) = reply {
-            writeln!(stdout, "{reply}")?;
-            stdout.flush()?;
-        }
-        if exit {
-            break;
-        }
-    }
-    Ok(())
 }
 
 #[cfg(test)]

@@ -15,7 +15,7 @@
 //! plugin/shutdown; notification event/notify (turn_end).
 
 use std::collections::HashMap;
-use std::io::{BufRead, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
@@ -355,56 +355,6 @@ pub fn ask_host(
     reply
 }
 
-fn main_checkpoint() -> std::io::Result<()> {
-    if std::env::args().nth(1).as_deref() == Some("manifest") {
-        println!("{}", manifest_checkpoint());
-        return Ok(());
-    }
-    let stdout = Arc::new(Mutex::new(std::io::stdout()));
-    let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
-    let counter = Mutex::new(0u64);
-
-    // Reader thread: host answers (string ids, no method) go to `pending`;
-    // everything else — requests and notifications — goes to the work loop.
-    let (work_tx, work_rx) = mpsc::channel::<Value>();
-    let reader_pending = pending.clone();
-    let _reader = std::thread::spawn(move || {
-        let stdin = std::io::stdin();
-        for line in stdin.lock().lines() {
-            let Ok(line) = line else { break };
-            let Ok(v) = serde_json::from_str::<Value>(&line) else {
-                continue;
-            };
-            if let Some(id) = v.get("id").and_then(Value::as_str)
-                && v.get("method").is_none()
-                && let Some(tx) = reader_pending.lock().expect("pending").remove(id)
-            {
-                let _ = tx.send(v.get("result").cloned().unwrap_or(Value::Null));
-                continue;
-            }
-            if work_tx.send(v).is_err() {
-                break;
-            }
-        }
-    });
-
-    for req in work_rx {
-        let mut asker = |questions: &[Value]| ask_host(&stdout, &pending, &counter, questions);
-        let (reply, exit) = handle_checkpoint(&req, &mut asker);
-        if let Some(reply) = reply {
-            let mut o = stdout.lock().expect("stdout");
-            writeln!(o, "{reply}")?;
-            o.flush()?;
-        }
-        if exit {
-            break;
-        }
-    }
-    // The reader thread is a detached stdin pump; returning from main
-    // ends the process with it, so there is nothing to join.
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -444,6 +394,7 @@ mod tests {
         assert!(run(&["init", "-q"]).status.success());
         assert!(run(&["config", "user.email", "t@t"]).status.success());
         assert!(run(&["config", "user.name", "t"]).status.success());
+        assert!(run(&["config", "core.autocrlf", "false"]).status.success());
         std::fs::write(d.join("a.txt"), "one\n").unwrap();
         assert!(run(&["add", "a.txt"]).status.success());
         assert!(run(&["commit", "-qm", "init"]).status.success());

@@ -10,7 +10,6 @@
 //! Outside a git repo (or when git fails) the commands return `{text}` with
 //! an error line instead of a prompt.
 
-use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
@@ -246,11 +245,11 @@ fn parse_changed_lines(diff: &str) -> Vec<(u32, u32)> {
             continue;
         }
         let end = start + count - 1;
-        if let Some(last) = ranges.last_mut() {
-            if start <= last.1 + 1 {
-                last.1 = last.1.max(end);
-                continue;
-            }
+        if let Some(last) = ranges.last_mut()
+            && start <= last.1 + 1
+        {
+            last.1 = last.1.max(end);
+            continue;
         }
         ranges.push((start, end));
     }
@@ -453,30 +452,6 @@ pub fn handle_review(req: &Value) -> (Option<Value>, bool) {
         }
     };
     (Some(json!({ "id": id, "result": result })), false)
-}
-
-fn main_review() -> std::io::Result<()> {
-    if std::env::args().nth(1).as_deref() == Some("manifest") {
-        println!("{}", manifest_review());
-        return Ok(());
-    }
-    let stdin = std::io::stdin();
-    let mut stdout = std::io::stdout();
-    for line in stdin.lock().lines() {
-        let line = line?;
-        let Ok(req) = serde_json::from_str::<Value>(&line) else {
-            continue;
-        };
-        let (reply, exit) = handle_review(&req);
-        if let Some(reply) = reply {
-            writeln!(stdout, "{reply}")?;
-            stdout.flush()?;
-        }
-        if exit {
-            break;
-        }
-    }
-    Ok(())
 }
 
 #[cfg(test)]

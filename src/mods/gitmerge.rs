@@ -9,7 +9,6 @@
 //!
 //! Wire methods: plugin/manifest, tool/call, command/run, plugin/shutdown.
 
-use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
@@ -271,30 +270,6 @@ pub fn handle_gitmerge(req: &Value) -> (Option<Value>, bool) {
         }
     };
     (Some(json!({ "id": id, "result": result })), false)
-}
-
-fn main_gitmerge() -> std::io::Result<()> {
-    if std::env::args().nth(1).as_deref() == Some("manifest") {
-        println!("{}", manifest_gitmerge());
-        return Ok(());
-    }
-    let stdin = std::io::stdin();
-    let mut stdout = std::io::stdout();
-    for line in stdin.lock().lines() {
-        let line = line?;
-        let Ok(req) = serde_json::from_str::<Value>(&line) else {
-            continue;
-        };
-        let (reply, exit) = handle_gitmerge(&req);
-        if let Some(reply) = reply {
-            writeln!(stdout, "{reply}")?;
-            stdout.flush()?;
-        }
-        if exit {
-            break;
-        }
-    }
-    Ok(())
 }
 
 #[cfg(test)]
