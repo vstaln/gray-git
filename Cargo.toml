@@ -1,12 +1,12 @@
 [package]
-name = "gray-git-flow"
-version = "0.1.2"
+name = "gray-git"
+version = "0.2.0"
 edition = "2024"
 description = "Merged git-lifecycle plugin for the gray agent harness: checkpoint, autocommit, git-merge, review in one sidecar."
 license = "MIT"
 
 [[bin]]
-name = "git-flow"
+name = "git"
 path = "src/main.rs"
 
 [dependencies]

@@ -1,4 +1,4 @@
-//! gray-git-flow — one sidecar for the git lifecycle.
+//! gray-git — one sidecar for the git lifecycle.
 //!
 //! Merges gray-checkpoint, gray-autocommit, gray-git-merge and gray-review.
 //! Each source lives verbatim in `mods/` with its own `~/.gray/<orig>/`
@@ -75,9 +75,9 @@ fn manifest(parts: &parts::Parts) -> Value {
             }
         }));
     }
-    let mut commands: Vec<&str> = vec!["/git-flow"];
+    let mut commands: Vec<&str> = vec!["/git"];
     let mut descriptions = serde_json::Map::new();
-    descriptions.insert("/git-flow".into(), json!("list the git lifecycle commands"));
+    descriptions.insert("/git".into(), json!("list the git lifecycle commands"));
     if parts.on("checkpoint") {
         commands.push("/checkpoint");
         descriptions.insert(
@@ -110,7 +110,7 @@ fn manifest(parts: &parts::Parts) -> Value {
         capabilities.push("host.ask");
     }
     json!({
-        "name": "git-flow",
+        "name": "git",
         "version": env!("CARGO_PKG_VERSION"),
         "protocol": "2.0",
         "tools": tools,
@@ -122,10 +122,10 @@ fn manifest(parts: &parts::Parts) -> Value {
     })
 }
 
-/// `/git-flow` — merged-plugin overview.
-fn git_flow_command(parts: &parts::Parts) -> String {
+/// `/git` — merged-plugin overview.
+fn git_overview(parts: &parts::Parts) -> String {
     let mut lines: Vec<String> = vec![format!(
-        "gray-git-flow {} — one sidecar, four git-lifecycle modules:",
+        "gray-git {} — one sidecar, four git-lifecycle modules:",
         env!("CARGO_PKG_VERSION")
     )];
     if parts.on("checkpoint") {
@@ -202,7 +202,7 @@ fn handle(
         "command/run" => {
             let name = params.get("name").and_then(Value::as_str).unwrap_or("");
             match name {
-                "/git-flow" => json!({ "text": git_flow_command(parts) }),
+                "/git" => json!({ "text": git_overview(parts) }),
                 "/checkpoint" if parts.on("checkpoint") => {
                     unwrap_result(checkpoint::handle_checkpoint(req, ask).0)
                 }
@@ -215,7 +215,7 @@ fn handle(
                 "/review" | "/simplify" if parts.on("review") => {
                     unwrap_result(review::handle_review(req).0)
                 }
-                _ => json!({ "text": format!("unknown command {name} — try /git-flow") }),
+                _ => json!({ "text": format!("unknown command {name} — try /git") }),
             }
         }
         "plugin/shutdown" => return (Some(json!({ "id": id, "result": {} })), true),
@@ -228,7 +228,7 @@ fn handle(
 }
 
 fn main() -> std::io::Result<()> {
-    let parts = parts::Parts::load("git-flow", PARTS);
+    let parts = parts::Parts::load("git", PARTS);
     if std::env::args().nth(1).as_deref() == Some("manifest") {
         println!("{}", manifest(&parts));
         return Ok(());
