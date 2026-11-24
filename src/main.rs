@@ -20,6 +20,8 @@ use std::sync::{Arc, Mutex, mpsc};
 
 use serde_json::{Value, json};
 
+mod parts;
+
 #[allow(dead_code)]
 #[path = "mods/autocommit.rs"]
 mod autocommit;
@@ -33,12 +35,33 @@ mod gitmerge;
 #[path = "mods/review.rs"]
 mod review;
 
-fn manifest() -> Value {
-    json!({
-        "name": "git-flow",
-        "version": env!("CARGO_PKG_VERSION"),
-        "protocol": "2.0",
-        "tools": [{
+const PARTS: &[parts::Part] = &[
+    parts::Part {
+        name: "checkpoint",
+        default: true,
+        description: "git stash snapshots around turns, restorable with /checkpoint",
+    },
+    parts::Part {
+        name: "autocommit",
+        default: true,
+        description: "commit at turn end when tools ran",
+    },
+    parts::Part {
+        name: "git-merge",
+        default: true,
+        description: "merge a branch and work through conflicts",
+    },
+    parts::Part {
+        name: "review",
+        default: true,
+        description: "review or simplify the working-tree diff",
+    },
+];
+
+fn manifest(parts: &parts::Parts) -> Value {
+    let mut tools: Vec<Value> = Vec::new();
+    if parts.on("git-merge") {
+        tools.push(json!({
             "name": "git_conflicts",
             "description": "List files still conflicted after a merge, or stage a file whose conflict markers you fixed. action \"list\" shows every `git diff --diff-filter=U` path and whether conflict markers remain; action \"mark-done\" with `file` verifies the markers are gone and runs `git add` on it.",
             "parameters": {
@@ -50,33 +73,85 @@ fn manifest() -> Value {
                 },
                 "required": ["action"]
             }
-        }],
-        "commands": [
-            "/git-flow", "/checkpoint", "/autocommit", "/merge", "/review", "/simplify",
-        ],
-        "command_descriptions": {
-            "/git-flow": "list the git lifecycle commands",
-            "/checkpoint": "list or restore git stash checkpoints",
-            "/autocommit": "toggle committing changes at turn end",
-            "/merge": "merge a branch and fix conflicts",
-            "/review": "review the working-tree git diff",
-            "/simplify": "simplify the changed code",
-        },
-        "hooks": ["agent/before_start"],
-        "capabilities": ["host.ask"],
+        }));
+    }
+    let mut commands: Vec<&str> = vec!["/git-flow"];
+    let mut descriptions = serde_json::Map::new();
+    descriptions.insert("/git-flow".into(), json!("list the git lifecycle commands"));
+    if parts.on("checkpoint") {
+        commands.push("/checkpoint");
+        descriptions.insert(
+            "/checkpoint".into(),
+            json!("list or restore git stash checkpoints"),
+        );
+    }
+    if parts.on("autocommit") {
+        commands.push("/autocommit");
+        descriptions.insert(
+            "/autocommit".into(),
+            json!("toggle committing changes at turn end"),
+        );
+    }
+    if parts.on("git-merge") {
+        commands.push("/merge");
+        descriptions.insert("/merge".into(), json!("merge a branch and fix conflicts"));
+    }
+    if parts.on("review") {
+        commands.extend(["/review", "/simplify"]);
+        descriptions.insert("/review".into(), json!("review the working-tree git diff"));
+        descriptions.insert("/simplify".into(), json!("simplify the changed code"));
+    }
+    let mut hooks: Vec<&str> = Vec::new();
+    if parts.on("checkpoint") {
+        hooks.push("agent/before_start");
+    }
+    let mut capabilities: Vec<&str> = Vec::new();
+    if parts.on("checkpoint") {
+        capabilities.push("host.ask");
+    }
+    json!({
+        "name": "git-flow",
+        "version": env!("CARGO_PKG_VERSION"),
+        "protocol": "2.0",
+        "tools": tools,
+        "commands": commands,
+        "command_descriptions": descriptions,
+        "hooks": hooks,
+        "capabilities": capabilities,
+        "parts": parts.manifest(PARTS),
     })
 }
 
 /// `/git-flow` — merged-plugin overview.
-fn git_flow_command() -> String {
-    format!(
-        "gray-git-flow {} — one sidecar, four git-lifecycle modules:\n\
-         \x20 /checkpoint [list|restore <n>]  git stash snapshots per session (~/.gray/checkpoint/)\n\
-         \x20 /autocommit on|off|status       commit at turn end when tools ran (~/.gray/autocommit/)\n\
-         \x20 /merge <branch>                 git merge; conflicts → resolve prompt + git_conflicts tool\n\
-         \x20 /review, /simplify              review or simplify the working-tree diff",
+fn git_flow_command(parts: &parts::Parts) -> String {
+    let mut lines: Vec<String> = vec![format!(
+        "gray-git-flow {} — one sidecar, four git-lifecycle modules:",
         env!("CARGO_PKG_VERSION")
-    )
+    )];
+    if parts.on("checkpoint") {
+        lines.push(
+            "\x20 /checkpoint [list|restore <n>]  git stash snapshots per session (~/.gray/checkpoint/)"
+                .into(),
+        );
+    }
+    if parts.on("autocommit") {
+        lines.push(
+            "\x20 /autocommit on|off|status       commit at turn end when tools ran (~/.gray/autocommit/)"
+                .into(),
+        );
+    }
+    if parts.on("git-merge") {
+        lines.push(
+            "\x20 /merge <branch>                 git merge; conflicts → resolve prompt + git_conflicts tool"
+                .into(),
+        );
+    }
+    if parts.on("review") {
+        lines.push(
+            "\x20 /review, /simplify              review or simplify the working-tree diff".into(),
+        );
+    }
+    lines.join("\n")
 }
 
 fn unwrap_result(reply: Option<Value>) -> Value {
@@ -90,6 +165,7 @@ fn handle(
     req: &Value,
     turn: &mut autocommit::Turn,
     ask: &mut dyn FnMut(&[Value]) -> Option<Value>,
+    parts: &parts::Parts,
 ) -> (Option<Value>, bool) {
     let id = req.get("id").cloned();
     let method = req.get("method").and_then(Value::as_str).unwrap_or("");
@@ -97,20 +173,27 @@ fn handle(
     let Some(id) = id else {
         // Notifications: fan out to every module that consumes them.
         if method == "event/notify" {
-            let _ = checkpoint::handle_checkpoint(req, ask);
-            let _ = autocommit::handle_autocommit(req, turn);
+            if parts.on("checkpoint") {
+                let _ = checkpoint::handle_checkpoint(req, ask);
+            }
+            if parts.on("autocommit") {
+                let _ = autocommit::handle_autocommit(req, turn);
+            }
         }
         return (None, method == "plugin/shutdown");
     };
     let result = match method {
-        "plugin/manifest" => manifest(),
+        "plugin/manifest" => manifest(parts),
         "agent/before_start" => {
+            if !parts.on("checkpoint") {
+                return (Some(json!({ "id": id, "result": {} })), false);
+            }
             let (reply, _) = checkpoint::handle_checkpoint(req, ask);
             return (reply, false);
         }
         "tool/call" => {
             let name = params.get("name").and_then(Value::as_str).unwrap_or("");
-            if name == "git_conflicts" {
+            if name == "git_conflicts" && parts.on("git-merge") {
                 let (reply, _) = gitmerge::handle_gitmerge(req);
                 return (reply, false);
             }
@@ -119,11 +202,19 @@ fn handle(
         "command/run" => {
             let name = params.get("name").and_then(Value::as_str).unwrap_or("");
             match name {
-                "/git-flow" => json!({ "text": git_flow_command() }),
-                "/checkpoint" => unwrap_result(checkpoint::handle_checkpoint(req, ask).0),
-                "/autocommit" => unwrap_result(autocommit::handle_autocommit(req, turn).0),
-                "/merge" => unwrap_result(gitmerge::handle_gitmerge(req).0),
-                "/review" | "/simplify" => unwrap_result(review::handle_review(req).0),
+                "/git-flow" => json!({ "text": git_flow_command(parts) }),
+                "/checkpoint" if parts.on("checkpoint") => {
+                    unwrap_result(checkpoint::handle_checkpoint(req, ask).0)
+                }
+                "/autocommit" if parts.on("autocommit") => {
+                    unwrap_result(autocommit::handle_autocommit(req, turn).0)
+                }
+                "/merge" if parts.on("git-merge") => {
+                    unwrap_result(gitmerge::handle_gitmerge(req).0)
+                }
+                "/review" | "/simplify" if parts.on("review") => {
+                    unwrap_result(review::handle_review(req).0)
+                }
                 _ => json!({ "text": format!("unknown command {name} — try /git-flow") }),
             }
         }
@@ -137,8 +228,9 @@ fn handle(
 }
 
 fn main() -> std::io::Result<()> {
+    let parts = parts::Parts::load("git-flow", PARTS);
     if std::env::args().nth(1).as_deref() == Some("manifest") {
-        println!("{}", manifest());
+        println!("{}", manifest(&parts));
         return Ok(());
     }
     let stdout = Arc::new(Mutex::new(std::io::stdout()));
@@ -173,7 +265,7 @@ fn main() -> std::io::Result<()> {
     for req in work_rx {
         let mut asker =
             |questions: &[Value]| checkpoint::ask_host(&stdout, &pending, &counter, questions);
-        let (reply, exit) = handle(&req, &mut turn, &mut asker);
+        let (reply, exit) = handle(&req, &mut turn, &mut asker, &parts);
         if let Some(reply) = reply {
             let mut o = stdout.lock().expect("stdout");
             writeln!(o, "{reply}")?;
