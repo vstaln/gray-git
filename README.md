@@ -1,10 +1,10 @@
 <div align="center">
-  <img alt="gray-git-flow" src="assets/icon.svg" width="120" height="120" />
-  <h1>gray-git-flow</h1>
+  <img alt="gray-git" src="assets/icon.svg" width="120" height="120" />
+  <h1>gray-git</h1>
   <p><strong>One sidecar for the git lifecycle: checkpoints, commit-on-exit, merge + conflict prompt, diff review.</strong></p>
   <p>
     <a href="https://gray.alignment.id">Website</a> ·
-    <a href="https://github.com/vstaln/gray-git-flow">Source</a> ·
+    <a href="https://github.com/vstaln/gray-git">Source</a> ·
     <a href="https://github.com/vstaln/gray">gray</a>
   </p>
   <p>
@@ -17,10 +17,10 @@
 <br/>
 
 ```bash
-gray plugin install git-flow
+gray plugin install git
 ```
 
-`gray-git-flow` merges four git plugins into a single sidecar process. Each
+`gray-git` merges four git plugins into a single sidecar process. Each
 module keeps its own `~/.gray/<orig>/` state (`~/.gray/checkpoint/`,
 `~/.gray/autocommit/`, `~/.gray/git-merge/`) and its own slash commands, so
 existing setups keep working after you uninstall the standalone versions.
@@ -48,13 +48,13 @@ existing setups keep working after you uninstall the standalone versions.
 
 `event/notify` goes to checkpoint first and then to autocommit, so the
 turn-end snapshot is taken before the auto-commit cleans the tree.
-`/git-flow` prints an overview of all four modules.
+`/git` prints an overview of all four modules.
 
 ## Build from source
 
 ```sh
 cargo build --release
-gray plugin check ./target/release/git-flow
+gray plugin check ./target/release/git
 ```
 
 ## License
